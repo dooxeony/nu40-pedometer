@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>러닝 만보기</title>
+<style>
+:root{--pink:#ff8fb8;--pink-l:#ffe3ee;--mint:#7ed9bd;--mint-l:#dff7ee;--yellow:#bfe6ff;--text:#6b3d52}
+*{box-sizing:border-box}
+.hello,button,.log h2{font-weight:700}
+.steps b{font-weight:800}
+.time{font-weight:600;font-variant-numeric:tabular-nums}
+body{margin:0;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif;color:var(--text);background:linear-gradient(160deg,var(--pink-l),var(--mint-l));display:flex;justify-content:center;padding:20px 16px}
+main{width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px}
+.hello{background:var(--yellow);border-radius:22px;padding:16px;text-align:center;font-size:22px;box-shadow:0 5px 0 #8fc9ee}
+.card{background:#fff;border-radius:26px;padding:20px 16px;text-align:center;box-shadow:0 6px 0 var(--pink)}
+.steps b{display:block;font-size:84px;line-height:1;color:var(--pink)}
+.steps span{font-size:18px}
+.time{margin-top:10px;display:inline-block;background:var(--mint-l);border-radius:99px;padding:6px 20px;font-size:30px;color:#2f9e80}
+.row{display:flex;gap:12px}
+button{flex:1;font:inherit;font-size:20px;padding:15px;border:0;border-radius:18px;background:var(--mint);color:#fff;cursor:pointer;box-shadow:0 5px 0 #55b99c}
+button:active{transform:translateY(3px);box-shadow:0 2px 0 #55b99c}
+button.end{background:var(--pink);box-shadow:0 5px 0 #e5709b}
+button.link{background:var(--yellow);color:var(--text);box-shadow:0 5px 0 #8fc9ee}
+button:disabled{opacity:.4;cursor:default}
+#msg{text-align:center;font-size:14px;opacity:.7}
+.log h2{margin:0 0 10px;font-size:20px;color:#2f9e80}
+.log ul{list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto;text-align:left}
+.log li{padding:9px 12px;margin-bottom:7px;background:var(--pink-l);border-radius:14px;font-size:16px}
+.log .empty{opacity:.6;text-align:center;padding:8px}
+.clear{margin-top:8px;font-size:13px;padding:6px 12px;background:#eee;color:#888;box-shadow:none;flex:none}
+</style>
+</head>
+<body>
+<main>
+  <div id="hello" class="hello">🏃 오늘도 러닝하러 오셨군요! 🏃</div>
+
+  <div class="card steps">
+    <b id="steps">0</b><span>걸음 👟</span><br>
+    <div id="time" class="time">00:00:00</div>
+  </div>
+
+  <button id="connect" class="link">🔗 보드 연결</button>
+  <div class="row">
+    <button id="toggle" disabled>시작</button>
+    <button id="end" class="end" disabled>종료</button>
+  </div>
+  <div id="msg">NU40 전원을 켜고 '보드 연결'을 눌러요.</div>
+
+  <div class="card log">
+    <h2>🍀 내 기록</h2>
+    <ul id="list"></ul>
+    <button id="clear" class="clear">기록 지우기</button>
+  </div>
+</main>
+<script>
+const SVC='6e400001-b5a3-f393-e0a9-e50e24dcca9e', TX='6e400002-b5a3-f393-e0a9-e50e24dcca9e', RX='6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+const KEY='pedometerLog';
+const $=id=>document.getElementById(id);
+const pad=n=>String(n).padStart(2,'0');
+const fmt=s=>pad(Math.floor(s/3600))+':'+pad(Math.floor(s%3600/60))+':'+pad(s%60);
+let txc=null,buf='',prev=null,log=[];
+
+try{log=JSON.parse(localStorage.getItem(KEY)||'[]');}catch(e){log=[];}
+function saveLog(){try{localStorage.setItem(KEY,JSON.stringify(log));}catch(e){}}
+function drawLog(){
+  const ul=$('list');ul.innerHTML='';
+  if(!log.length){const li=document.createElement('li');li.className='empty';li.textContent='아직 기록이 없어요';ul.appendChild(li);return;}
+  log.slice().reverse().forEach(r=>{const li=document.createElement('li');li.textContent=r.d+' : '+r.steps+'걸음 · '+r.t;ul.appendChild(li);});
+}
+function addRecord(steps,sec){
+  const n=new Date();
+  const d=n.getFullYear()+'.'+pad(n.getMonth()+1)+'.'+pad(n.getDate())+' '+pad(n.getHours())+':'+pad(n.getMinutes());
+  log.push({d:d,steps:steps,t:fmt(sec)});saveLog();drawLog();
+}
+
+function render(s,steps,sec){
+  if(prev!==null&&prev!==2&&s===2) addRecord(steps,sec);
+  prev=s;
+  $('hello').textContent=s===2?'🏃 오늘의 운동 끝! 🏃':s===1?'🏃 오늘도 화이팅! 🏃':(steps>0||sec>0?'🏃 잠깐 쉬어가요~ 🏃':'🏃 오늘도 러닝하러 오셨군요! 🏃');
+  $('steps').textContent=steps;
+  $('time').textContent=fmt(sec);
+  $('toggle').textContent=s===1?'정지':s===2?'새 운동':(steps>0||sec>0?'재개':'시작');
+  $('end').disabled=(s===2);
+}
+function onData(e){
+  buf+=new TextDecoder().decode(e.target.value);
+  let i;
+  while((i=buf.indexOf('\n'))>=0){
+    const p=buf.slice(0,i).trim().split(',');buf=buf.slice(i+1);
+    if(p[0]==='P'&&p.length>=4) render(+p[1],+p[2],+p[3]);
+  }
+}
+async function send(c){
+  if(!txc) return;
+  try{await txc.writeValueWithoutResponse(new TextEncoder().encode(c));}
+  catch(e){$('msg').textContent='명령 전송 실패: '+e.message;}
+}
+function lost(){
+  txc=null;prev=null;$('toggle').disabled=true;$('end').disabled=true;
+  $('connect').textContent='🔗 다시 연결';$('connect').disabled=false;
+  $('msg').textContent='연결이 끊어졌어요. 다시 연결해 주세요.';
+}
+$('connect').onclick=async()=>{
+  if(!navigator.bluetooth){$('msg').textContent='Chrome(또는 아이폰은 Bluefy)으로 열어 주세요.';return;}
+  try{
+    $('msg').textContent='보드를 찾는 중...';
+    const dev=await navigator.bluetooth.requestDevice({filters:[{services:[SVC]}]});
+    dev.addEventListener('gattserverdisconnected',lost);
+    const srv=await dev.gatt.connect();
+    const svc=await srv.getPrimaryService(SVC);
+    txc=await svc.getCharacteristic(TX);
+    const rx=await svc.getCharacteristic(RX);
+    rx.addEventListener('characteristicvaluechanged',onData);
+    await rx.startNotifications();
+    $('toggle').disabled=false;$('end').disabled=false;
+    $('connect').textContent='✅ 연결됨';$('connect').disabled=true;
+    $('msg').textContent='연결됐어요!';
+    send('?');
+  }catch(e){$('msg').textContent='연결 실패: '+e.message;}
+};
+$('toggle').onclick=()=>send('S');
+$('end').onclick=()=>send('E');
+$('clear').onclick=()=>{if(confirm('기록을 모두 지울까요?')){log=[];saveLog();drawLog();}};
+drawLog();
+</script>
+</body>
+</html>
